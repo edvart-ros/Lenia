@@ -1,30 +1,32 @@
 import * as BABYLON from "babylonjs";
+import { sceneManager } from "./scene";
+import {computeShader as shaderSource} from "./shader"
 
-const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
+const canvas = document.getElementById("renderCanvas") as unknown as HTMLCanvasElement;
 const engine = new BABYLON.WebGPUEngine(canvas);
 await engine.initAsync();
-const createScene = function () {
-    const scene = new BABYLON.Scene(engine);
-    const camera = new BABYLON.FreeCamera(
-        "mainCam",
-        new BABYLON.Vector3(0, 5, -10),
-    );
+const sceneMan = new sceneManager(engine, canvas);
 
-    camera.setTarget(BABYLON.Vector3.Zero());
-    camera.attachControl(canvas, true);
-    const light = new BABYLON.HemisphericLight(
-        "light",
-        new BABYLON.Vector3(0, 1, 0),
-    );
-    light.intensity = 0.7;
-    BABYLON.MeshBuilder.CreateGround("plane", {width: 10, height: 10});
-    return scene;
-};
+const compShader = new BABYLON.ComputeShader(
+    "compShader", 
+    engine, 
+    {computeSource:shaderSource},
+    {bindingsMapping:{
+        "texture": { group: 0, binding: 0 },
+    }}
+)
 
-const scene = createScene();
+const texture = BABYLON.RawTexture.CreateRGBAStorageTexture(null, 1024, 1024, engine);
+sceneMan.quadMaterial.emissiveTexture = texture;
+compShader.setStorageTexture("texture", texture);
+compShader.dispatchWhenReady(1024, 1024, 1);
+const paramsBuffer = new BABYLON.UniformBuffer(engine);
+compShader.setUniformBuffer("params", paramsBuffer)
 
 engine.runRenderLoop(function () {
-    scene.render();
+   paramsBuffer.updateFloat("time", performance.now()/1000);
+   paramsBuffer.update();
+   sceneMan.scene.render();
 });
 
 window.addEventListener("resize", function () {
